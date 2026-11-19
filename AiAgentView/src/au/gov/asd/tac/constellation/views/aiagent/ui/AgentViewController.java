@@ -51,6 +51,7 @@ import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
@@ -98,6 +99,8 @@ public final class AgentViewController implements AgentEnvironment {
     private final AtomicBoolean flushScheduled = new AtomicBoolean(false);
     private final List<ObjectNode> transcriptLog = new ArrayList<>();
     private final PreferenceChangeListener preferenceListener;
+    // set by shutdown(); work queued before then (e.g. a settings reload) is ignored
+    private volatile boolean closed;
     private final BiFunction<EndpointConfig, String, LlmProvider> providerFactory;
     private final Function<EndpointConfig, String> keyReader;
 
@@ -190,6 +193,9 @@ public final class AgentViewController implements AgentEnvironment {
     }
 
     private void reloadSettings() {
+        if (closed) {
+            return;
+        }
         final AgentSettings previous = settings;
         settings = AgentSettings.load();
         if (previous.maxSteps() != settings.maxSteps() || !java.util.Objects.equals(previous.temperature(), settings.temperature())
@@ -249,7 +255,7 @@ public final class AgentViewController implements AgentEnvironment {
             return;
         }
         pane.getRefreshModelsButton().setDisable(true);
-        background.submit(() -> {
+        runInBackground(() -> {
             List<ModelInfo> models = List.of();
             String error = null;
             try {
@@ -308,7 +314,7 @@ public final class AgentViewController implements AgentEnvironment {
         logEntry("user", message);
         pane.setRunning(true);
         final AgentConfig config = buildConfig(model);
-        background.submit(() -> {
+        runInBackground(() -> {
             try {
                 final LlmProvider provider = providerFactory.apply(endpoint, keyReader.apply(endpoint));
                 synchronized (this) {
@@ -370,12 +376,30 @@ public final class AgentViewController implements AgentEnvironment {
     }
 
     public void shutdown() {
+        closed = true;
         AgentSettings.preferences().removePreferenceChangeListener(preferenceListener);
         final AgentSession current = session;
         if (current != null) {
             current.shutdown();
         }
         background.shutdownNow();
+    }
+
+    /**
+     * Run a task on the background thread, unless the view has been shut down.
+     * Preference changes are delivered asynchronously, so a reload can still
+     * arrive after {@link #shutdown()}.
+     */
+    private void runInBackground(final Runnable task) {
+        if (closed) {
+            return;
+        }
+        try {
+            background.submit(task);
+        } catch (final RejectedExecutionException ex) {
+            // shut down between the check and the submit
+            LOGGER.log(Level.FINE, "Ignoring background task after shutdown", ex);
+        }
     }
 
     // ----- events -----
@@ -526,7 +550,7 @@ public final class AgentViewController implements AgentEnvironment {
      */
     public void updateContext() {
         final Graph graph = currentGraph;
-        background.submit(() -> {
+        runInBackground(() -> {
             final String name = graph == null ? null : GraphSupport.graphName(graph);
             currentGraphName = name;
             final String text;

@@ -45,8 +45,12 @@ jobs:
           echo "NETBEANS_HOME=$NETBEANS_HOME"
           ls "$NETBEANS_HOME"
 
+      # Caches are restored and saved explicitly (actions/cache only saves when
+      # the whole job succeeds, which would throw away the Constellation build
+      # whenever a test fails).
       - name: Restore Ivy cache
-        uses: actions/cache@v4
+        id: cache-ivy
+        uses: actions/cache/restore@v4
         with:
           path: /root/.ivy2   # Java user.home for root in the container
           key: ivy-${{ env.CONSTELLATION_REF }}-${{ hashFiles('constellation-ai/AiAgentView/ivy.xml') }}
@@ -55,7 +59,7 @@ jobs:
       # Constellation's compiled modules, which the plugin compiles against
       - name: Restore Constellation build
         id: cache-constellation
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: constellation/build/cluster
           key: constellation-cluster-${{ env.CONSTELLATION_REF }}-nb21
@@ -80,6 +84,13 @@ jobs:
             -Dupdate.dependencies=true \
             update-dependencies-clean-build
 
+      - name: Save Constellation build
+        if: steps.cache-constellation.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: constellation/build/cluster
+          key: ${{ steps.cache-constellation.outputs.cache-primary-key }}
+
       - name: Set the plugin version from the tag
         if: startsWith(github.ref, 'refs/tags/v')
         working-directory: constellation-ai
@@ -97,6 +108,13 @@ jobs:
         run: |
           export CONSTELLATION_DIR=../constellation
           ./build.sh nbms
+
+      - name: Save Ivy cache
+        if: steps.cache-ivy.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /root/.ivy2
+          key: ${{ steps.cache-ivy.outputs.cache-primary-key }}
 
       - name: Run the tests
         working-directory: constellation-ai
