@@ -1,0 +1,26 @@
+# Build output (NBMs, update centre, compiled classes, test results)
+build/
+dist/
+*/build/
+
+# Third-party jars downloaded by Ivy at build time (see AiAgentView/ivy.xml)
+AiAgentView/release/modules/ext/
+
+# Machine-specific NetBeans settings (platform paths, constellation.dir overrides)
+nbproject/private/
+*/nbproject/private/
+
+# NBM signing keystores and credentials - never commit these
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Logs
+*.log

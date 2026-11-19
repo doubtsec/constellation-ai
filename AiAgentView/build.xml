@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="au.gov.asd.tac.constellation.views.aiagent" default="netbeans" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>Builds, tests, and runs the AI Assistant plugin module.</description>
+    <import file="nbproject/build-impl.xml"/>
+
+    <!--
+      The third-party jars listed in ivy.xml are bundled inside this module's
+      NBM (modules/ext/constellation-ai/) so the plugin installs as a single
+      file. They are downloaded on the first build.
+    -->
+    <property name="ivy.install.version" value="2.5.3"/>
+    <property name="ivy.jar.file" value="${user.home}/.ivy2/ivy-${ivy.install.version}.jar"/>
+    <property name="libraries.dir" value="release/modules/ext/constellation-ai"/>
+
+    <target name="-check-libraries">
+        <available file="${libraries.dir}/langchain4j-core-1.22.0.jar" property="libraries.present"/>
+    </target>
+
+    <target name="-download-ivy" xmlns:unless="ant:unless">
+        <available file="${ivy.jar.file}" property="ivy.present"/>
+        <mkdir dir="${user.home}/.ivy2"/>
+        <get src="https://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar"
+             dest="${ivy.jar.file}" usetimestamp="true" unless:set="ivy.present"/>
+    </target>
+
+    <target name="fetch-libraries" depends="-check-libraries,-download-ivy" unless="libraries.present"
+            description="Download the bundled third-party jars with Ivy.">
+        <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant" classpath="${ivy.jar.file}"/>
+        <ivy:configure file="${suite.dir}/ivysettings.xml"/>
+        <ivy:resolve file="ivy.xml"/>
+        <ivy:retrieve pattern="${libraries.dir}/[artifact]-[revision].[ext]" type="jar,bundle" sync="true"/>
+    </target>
+
+    <target name="netbeans" depends="fetch-libraries">
+        <ant target="projectized-common.netbeans" inheritall="false"/>
+    </target>
+
+    <target name="clean-libraries" description="Delete the downloaded jars.">
+        <delete dir="${libraries.dir}"/>
+    </target>
+</project>

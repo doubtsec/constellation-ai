@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="constellation-ai" basedir=".">
+    <description>Builds the Constellation AI Assistant plugin suite.</description>
+    <import file="nbproject/build-impl.xml"/>
+
+    <!--
+      The suite's NBMs and update-centre catalogue (build/updates/updates.xml)
+      are what get distributed. Install the .nbm files from Constellation's
+      Setup > Plugins > Downloaded > Add Plugins..., or add updates.xml as an
+      update centre under Setup > Plugins > Settings.
+    -->
+</project>

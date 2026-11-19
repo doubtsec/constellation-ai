@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Third-party libraries bundled with the AI Assistant plugin.
+
+  Jackson, slf4j and jspecify are deliberately NOT listed: Constellation's
+  CoreDependencies module already provides them, and shipping a second copy
+  would put two versions of the same classes on the module class path.
+  Everything is fetched non-transitively for the same reason.
+-->
+<ivy-module version="2.0">
+    <info organisation="au.gov.asd.tac.constellation" module="aiagent"/>
+    <configurations>
+        <conf name="default"/>
+    </configurations>
+    <dependencies defaultconf="default->master">
+        <dependency org="dev.langchain4j" name="langchain4j-core" rev="1.22.0" transitive="false"/>
+        <dependency org="dev.langchain4j" name="langchain4j-http-client" rev="1.22.0" transitive="false"/>
+        <dependency org="dev.langchain4j" name="langchain4j-http-client-jdk" rev="1.22.0" transitive="false"/>
+        <dependency org="dev.langchain4j" name="langchain4j-open-ai" rev="1.22.0" transitive="false"/>
+        <dependency org="dev.langchain4j" name="langchain4j-anthropic" rev="1.22.0" transitive="false"/>
+        <dependency org="dev.langchain4j" name="langchain4j-reactive-streaming" rev="1.22.0-beta32" transitive="false"/>
+        <dependency org="io.smallrye.reactive" name="mutiny-zero" rev="1.3.1" transitive="false"/>
+    </dependencies>
+</ivy-module>
