@@ -253,7 +253,7 @@ licenses/                                        licence text referenced by upda
 
 ### Tests
 
-`./build.sh test` runs 82 unit tests (agent loop, tools, settings, schema generation, UI). An integration
+`./build.sh test` runs the unit tests (agent loop, tools, settings, schema generation, UI). An integration
 test also talks to a real endpoint when these are set (it is skipped otherwise):
 
 ```sh
@@ -289,11 +289,28 @@ Constellation's Plugin Manager supports:
    versions automatically through the **Updates** tab. An update centre can list several plugins; it's an
    ordinary NetBeans [update center](https://netbeans.apache.org/wiki/main/netbeansdevelopperfaq/DevFaqUpdateCenter/).
 
+### Continuous integration and releases
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) builds the plugin on GitHub Actions:
+
+- **Every push and pull request to `main`** builds the `.nbm`, runs the unit tests (the live LLM
+  integration tests are skipped) and attaches the `.nbm` to the workflow run as an artifact.
+- **Pushing a tag like `v1.1.0`** does the same, sets the plugin's version to the tag, and publishes a
+  GitHub Release with the `.nbm` attached:
+
+  ```sh
+  git tag v1.1.0
+  git push origin v1.1.0
+  ```
+
+The workflow compiles against Constellation built from source at the commit in `CONSTELLATION_REF`
+(cached, so only the first run builds Constellation). Change it to target a different Constellation.
+
 ### Versioning
 
-Constellation decides whether a plugin is new or an update by its specification version. Bump
-`OpenIDE-Module-Specification-Version` in `AiAgentView/manifest.mf` (e.g. `1.0` → `1.1`) for every release
-you distribute, rebuild, and republish.
+Constellation decides whether a plugin is new or an update by its specification version
+(`OpenIDE-Module-Specification-Version` in `AiAgentView/manifest.mf`). Releases built by CI take it from
+the tag; for local builds, bump it by hand (e.g. `1.0` → `1.1`) for every release you distribute.
 
 ### Signing the NBM
 

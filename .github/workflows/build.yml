@@ -1,0 +1,175 @@
+name: Build plugin
+
+# Builds the AI Assistant plugin (.nbm) against a built Constellation and runs
+# its unit tests. Pushing a tag such as v1.1.0 also publishes a GitHub Release
+# with the .nbm attached.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The Constellation commit the plugin is compiled against. The plugin's
+  # module dependencies are taken from this build, so users need a
+  # Constellation at least this new. Change it to target another version.
+  CONSTELLATION_REPO: constellation-app/constellation
+  CONSTELLATION_REF: 13ba03837521fffc2010fe52ef594fd51d805659
+  NETBEANS_VERSION: '21'
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+        with:
+          path: constellation-ai
+
+      - name: Set up JDK 21 with JavaFX
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+          java-package: jdk+fx
+
+      - name: Install Ant
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ant
+          ant -version
+
+      # NetBeans platform + build harness (only those two clusters are kept)
+      - name: Restore NetBeans
+        id: cache-netbeans
+        uses: actions/cache@v4
+        with:
+          path: ~/netbeans
+          key: netbeans-${{ env.NETBEANS_VERSION }}-platform-harness
+
+      - name: Download NetBeans
+        if: steps.cache-netbeans.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o /tmp/netbeans.zip \
+            "https://archive.apache.org/dist/netbeans/netbeans/${NETBEANS_VERSION}/netbeans-${NETBEANS_VERSION}-bin.zip"
+          unzip -q /tmp/netbeans.zip -d ~
+          rm /tmp/netbeans.zip
+          cd ~/netbeans
+          find . -mindepth 1 -maxdepth 1 ! -name platform ! -name harness -exec rm -rf {} +
+          ls
+
+      - name: Restore Ivy cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-${{ env.CONSTELLATION_REF }}-${{ hashFiles('constellation-ai/AiAgentView/ivy.xml') }}
+          restore-keys: ivy-
+
+      # Constellation's compiled modules, which the plugin compiles against
+      - name: Restore Constellation build
+        id: cache-constellation
+        uses: actions/cache@v4
+        with:
+          path: constellation/build/cluster
+          key: constellation-cluster-${{ env.CONSTELLATION_REF }}-nb${{ env.NETBEANS_VERSION }}
+
+      - name: Check out Constellation
+        if: steps.cache-constellation.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONSTELLATION_REPO }}
+          ref: ${{ env.CONSTELLATION_REF }}
+          path: constellation
+
+      - name: Build Constellation
+        if: steps.cache-constellation.outputs.cache-hit != 'true'
+        working-directory: constellation
+        run: |
+          NB=~/netbeans
+          ant -q \
+            -Dnbplatform.active.dir="$NB" \
+            -Dnbplatform.default.netbeans.dest.dir="$NB" \
+            -Dnbplatform.default.harness.dir="$NB/harness" \
+            -Dupdate.dependencies=true \
+            update-dependencies-clean-build
+
+      - name: Set the plugin version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: constellation-ai
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME must look like v1, v1.2 or v1.2.3"
+            exit 1
+          fi
+          sed -i "s/^OpenIDE-Module-Specification-Version: .*/OpenIDE-Module-Specification-Version: $VERSION/" AiAgentView/manifest.mf
+          grep Specification-Version AiAgentView/manifest.mf
+
+      - name: Build the plugin
+        working-directory: constellation-ai
+        run: |
+          export NETBEANS_HOME="$HOME/netbeans" CONSTELLATION_DIR=../constellation
+          ./build.sh nbms
+
+      - name: Run the tests
+        working-directory: constellation-ai
+        run: |
+          export NETBEANS_HOME="$HOME/netbeans" CONSTELLATION_DIR=../constellation
+          ./build.sh test
+          python3 - <<'EOF'
+          import re, sys
+          head = open("AiAgentView/build/test/unit/results/testng-results.xml").read(500)
+          m = re.search(r'total="(\d+)" passed="(\d+)" failed="(\d+)" skipped="(\d+)"', head)
+          print("Tests: total=%s passed=%s failed=%s skipped=%s" % m.groups())
+          sys.exit(1 if int(m.group(3)) else 0)
+          EOF
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: constellation-ai/AiAgentView/build/test/unit/results/
+          if-no-files-found: ignore
+
+      - name: Upload the plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: constellation-ai-nbm
+          path: constellation-ai/build/updates/*.nbm
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the plugin
+        uses: actions/download-artifact@v4
+        with:
+          name: constellation-ai-nbm
+          path: dist
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.nbm \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "AI Assistant $GITHUB_REF_NAME" \
+            --notes "Install with Constellation's **Setup > Plugins > Downloaded > Add Plugins…** and choose \`au-gov-asd-tac-constellation-views-aiagent.nbm\`.
+
+          Built against Constellation \`${CONSTELLATION_REF}\`."
