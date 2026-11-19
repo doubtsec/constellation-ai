@@ -31,6 +31,10 @@ jobs:
     # (platform + build harness) at $NETBEANS_HOME, Ant, git and python3.
     container:
       image: constellationapplication/netbeans-runner:21.0.3
+    # container steps default to sh; the steps use bash features
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Check out the plugin
