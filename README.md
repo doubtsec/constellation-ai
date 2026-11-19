@@ -305,6 +305,8 @@ Constellation's Plugin Manager supports:
 
 The workflow compiles against Constellation built from source at the commit in `CONSTELLATION_REF`
 (cached, so only the first run builds Constellation). Change it to target a different Constellation.
+The job runs in `constellationapplication/netbeans-runner`, the Docker image Constellation's own CI uses,
+which provides the JavaFX JDK, NetBeans 21 platform and harness, and Ant.
 
 ### Versioning
 

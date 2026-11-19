@@ -21,13 +21,16 @@ env:
   # Constellation at least this new. Change it to target another version.
   CONSTELLATION_REPO: constellation-app/constellation
   CONSTELLATION_REF: 13ba03837521fffc2010fe52ef594fd51d805659
-  NETBEANS_VERSION: '21'
 
 jobs:
   build:
     name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # The image Constellation's own CI uses: Zulu 21 JDK with JavaFX, NetBeans 21
+    # (platform + build harness) at $NETBEANS_HOME, Ant, git and python3.
+    container:
+      image: constellationapplication/netbeans-runner:21.0.3
 
     steps:
       - name: Check out the plugin
@@ -35,42 +38,17 @@ jobs:
         with:
           path: constellation-ai
 
-      - name: Set up JDK 21 with JavaFX
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '21'
-          java-package: jdk+fx
-
-      - name: Install Ant
+      - name: Show tool versions
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q ant
+          java -version
           ant -version
-
-      # NetBeans platform + build harness (only those two clusters are kept)
-      - name: Restore NetBeans
-        id: cache-netbeans
-        uses: actions/cache@v4
-        with:
-          path: ~/netbeans
-          key: netbeans-${{ env.NETBEANS_VERSION }}-platform-harness
-
-      - name: Download NetBeans
-        if: steps.cache-netbeans.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL -o /tmp/netbeans.zip \
-            "https://archive.apache.org/dist/netbeans/netbeans/${NETBEANS_VERSION}/netbeans-${NETBEANS_VERSION}-bin.zip"
-          unzip -q /tmp/netbeans.zip -d ~
-          rm /tmp/netbeans.zip
-          cd ~/netbeans
-          find . -mindepth 1 -maxdepth 1 ! -name platform ! -name harness -exec rm -rf {} +
-          ls
+          echo "NETBEANS_HOME=$NETBEANS_HOME"
+          ls "$NETBEANS_HOME"
 
       - name: Restore Ivy cache
         uses: actions/cache@v4
         with:
-          path: ~/.ivy2
+          path: /root/.ivy2   # Java user.home for root in the container
           key: ivy-${{ env.CONSTELLATION_REF }}-${{ hashFiles('constellation-ai/AiAgentView/ivy.xml') }}
           restore-keys: ivy-
 
@@ -80,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: constellation/build/cluster
-          key: constellation-cluster-${{ env.CONSTELLATION_REF }}-nb${{ env.NETBEANS_VERSION }}
+          key: constellation-cluster-${{ env.CONSTELLATION_REF }}-nb21
 
       - name: Check out Constellation
         if: steps.cache-constellation.outputs.cache-hit != 'true'
@@ -94,7 +72,7 @@ jobs:
         if: steps.cache-constellation.outputs.cache-hit != 'true'
         working-directory: constellation
         run: |
-          NB=~/netbeans
+          NB="$NETBEANS_HOME"
           ant -q \
             -Dnbplatform.active.dir="$NB" \
             -Dnbplatform.default.netbeans.dest.dir="$NB" \
@@ -117,13 +95,13 @@ jobs:
       - name: Build the plugin
         working-directory: constellation-ai
         run: |
-          export NETBEANS_HOME="$HOME/netbeans" CONSTELLATION_DIR=../constellation
+          export CONSTELLATION_DIR=../constellation
           ./build.sh nbms
 
       - name: Run the tests
         working-directory: constellation-ai
         run: |
-          export NETBEANS_HOME="$HOME/netbeans" CONSTELLATION_DIR=../constellation
+          export CONSTELLATION_DIR=../constellation
           ./build.sh test
           python3 - <<'EOF'
           import re, sys
